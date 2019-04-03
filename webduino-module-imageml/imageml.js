@@ -1,4 +1,4 @@
-let Camera = (function () {
+var Camera = (function () {
   const webCam = 0;
   const wsCam = 1;
   const jpgCam = 2;
@@ -14,6 +14,12 @@ let Camera = (function () {
       }
       this.setCamType(camType);
       this.setFlip(false);
+      this.autoScale = false;
+      this.setRotate(0);
+    }
+
+    setAutoScale(autoScale) {
+      this.autoScale = autoScale;
     }
 
     setCamType(camType) {
@@ -36,8 +42,8 @@ let Camera = (function () {
       }
     }
 
-    setRotate(bool) {
-      this.rotate = bool;
+    setRotate(degrees) {
+      this.rotate = degrees;
       return this;
     }
 
@@ -135,11 +141,10 @@ let Camera = (function () {
       var camSnapshotDelay = 0.5;
       var param = this.URL.indexOf("?");
       if (param > 0) {
-        camSnapshotDelay = parseFloat(this.URL.substring(param + 1)) * 1000;
+        camSnapshotDelay = parseFloat(this.URL.substring(param + 1));
         this.URL = this.URL.substring(0, param);
-      } else {
-        camSnapshotDelay = camSnapshotDelay * 1000;
       }
+      camSnapshotDelay = camSnapshotDelay * 1000;
       image.src = this.URL;
       image.onload = function () {
         setTimeout(function () {
@@ -152,8 +157,12 @@ let Camera = (function () {
     }
 
     onCanvas(eleOrId, callback) {
+      window.hh = 1;
       var self = this;
       var canvas = self.getEle(eleOrId);
+      self.canvas = canvas;
+      self.ctx = canvas.getContext("2d");
+
       this.buttonTrigger(canvas, function () {
         self.startCam();
         switch (self.camType) {
@@ -164,10 +173,11 @@ let Camera = (function () {
             video.onloadeddata = function () {
               var loop = function () {
                 var ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight,
-                  0, 0, canvas.width, canvas.height);
+                var vw = video.videoWidth;
+                var vh = video.videoHeight;
+                self.rotateImg(video, canvas, self.rotate, true);
                 if (typeof callback == 'function') {
-                  callback(canvas, video);
+                  callback(self.canvas, video);
                 }
                 requestAnimationFrame(loop);
               }
@@ -176,12 +186,8 @@ let Camera = (function () {
             break;
           case jpgCam:
             var ele = document.createElement('img');
-            //ele.width = canvas.width;
-            //ele.height = canvas.height;
             self.onImage(ele, function (img) {
-              var ctx = canvas.getContext('2d');
-              //ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
-              self.drawRotated(canvas, img, self.rotate);
+              self.rotateImg(ele, canvas, self.rotate, false);
               if (typeof callback == 'function') {
                 callback(canvas, ele);
               }
@@ -195,8 +201,7 @@ let Camera = (function () {
             document.getElementsByTagName("body")[0].append(ele);
             var ctx = canvas.getContext('2d');
             var loop = function () {
-              // ctx.drawImage(ele, 0, 0, ele.width, ele.height,0, 0, canvas.width, canvas.height);
-              self.drawRotated(canvas, ele, self.rotate);
+              self.rotateImg(ele, canvas, self.rotate, false);
               if (typeof callback == 'function') {
                 callback(canvas, ele);
               }
@@ -223,29 +228,46 @@ let Camera = (function () {
       return video;
     }
 
-    drawRotated(canvas, image, degrees) {
-      try {
-        degrees = this.rotate ? 90 : 0;
-        var context = canvas.getContext('2d');
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        context.save();
-        context.translate(canvas.width / 2, canvas.height / 2);
-        context.rotate(degrees * Math.PI / 180);
-        var w = (canvas.width - image.width) / 2;
-        var h = (canvas.height - image.height) / 2;
-        if (degrees != 0) {
-          context.drawImage(image,
-            (-image.height / 2) - h, (-image.width / 2) - w,
-            canvas.height, canvas.width);
-        } else {
-          context.drawImage(image,
-            (-image.width / 2) - w, (-image.height / 2) - h,
-            canvas.width, canvas.height);
-        }
-        context.restore();
-      } catch (e) {
-        console.log("drawImage err:", e);
+    rotateImg(i, c, degrees, isVideo) {
+      var ctx = c.getContext("2d");
+      var iw = isVideo ? i.videoWidth : i.naturalWidth;
+      var ih = isVideo ? i.videoHeight : i.naturalHeight;
+      var cw = c.width;
+      var ch = c.height;
+      var iRatio = parseInt(100 * iw / ih) / 100;
+      var cRatio = parseInt(100 * cw / ch) / 100;
+      this.ctx.save();
+      if (cw != ch && (cRatio != iRatio) && !this.autoScale) {
+        ctx.translate(cw / 2, ch / 2);
+        ctx.rotate(degrees * 0.0174532925199432957);
+        ctx.translate(-ch / 2, -cw / 2);
+        ctx.drawImage(i, 0, 0, iw, ih, 0, 0, ch, cw);
+      } else {
+        ctx.translate(cw / 2, ch / 2);
+        ctx.rotate(degrees * 0.0174532925199432957);
+        ctx.translate(-cw / 2, -ch / 2);
+        this.drawImg(i, c, isVideo);
       }
+      this.ctx.restore();
+    }
+
+
+    drawImg(i, c, isVideo) {
+      var iw = isVideo ? i.videoWidth : i.naturalWidth;
+      var ih = isVideo ? i.videoHeight : i.naturalHeight;
+      var cw = c.width;
+      var ch = c.height;
+      var sx = 0;
+      var sy = 0;
+      var cRatio = cw / ch;
+      if (iw >= ih) {
+        sx = (iw - (ih * cRatio)) / 2;
+        iw = ih * cRatio;
+      } else {
+        sy = (ih - (iw * cRatio)) / 2;
+        ih = iw * cRatio;
+      }
+      this.ctx.drawImage(i, sx, sy, iw, ih, 0, 0, cw, ch);
     }
 
     buttonTrigger(ele, callback) {
@@ -266,6 +288,21 @@ let Camera = (function () {
       } else {
         callback();
       }
+    }
+
+    upload(url) {
+      this.canvas.toBlob(
+        function (blob) {
+          var fd = new FormData();
+          fd.append('file', blob, "img.jpg");
+          fetch(url, {
+            method: 'POST',
+            mode: 'cors',
+            body: fd
+          }).then(res => {
+            console.log("upload res:", res.status);
+          });
+        }, 'image/jpeg');
     }
   }
   return Camera;
